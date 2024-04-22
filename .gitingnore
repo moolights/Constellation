@@ -1,0 +1,7 @@
+# Ignore Xcode workspaces and user data
+*.xcworkspace
+xcuserdata/
+
+# Ignore build and derived data
+build/
+DerivedData/
