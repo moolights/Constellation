@@ -1,0 +1,8 @@
+# Build artifacts
+build/
+DerivedData/
+
+# User-specific settings
+*.xcuserdata/
+*.xccheckout
+*.xcscmblueprint
