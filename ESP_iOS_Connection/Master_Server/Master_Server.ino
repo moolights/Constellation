@@ -11,7 +11,7 @@ BLECharacteristic *pCharacteristic;
 
 void setup() {
     pinMode(LED_PIN, OUTPUT);
-    BLEDevice::init("ESP32_LED_Control"); // Create a BLE device (name it how you want)
+    BLEDevice::init("Master"); // Create a BLE device (name it how you want)
     BLEServer *pServer = BLEDevice::createServer(); // Establish it as a server
     BLEService *pService = pServer->createService(SERVICE_UUID); // Create a service given a UUID
     pCharacteristic = pService->createCharacteristic(

@@ -44,7 +44,7 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         
-        if peripheral.name == "ESP32_LED_Control" {
+        if peripheral.name == "Master" {
             esp32Peripheral = peripheral
             esp32Peripheral?.delegate = self
             central.stopScan()
@@ -53,27 +53,27 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-            peripheral.discoverServices([serviceUUID])
-        }
+        peripheral.discoverServices([serviceUUID])
+    }
 
-        func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-            guard let service = peripheral.services?.first else { return }
-            peripheral.discoverCharacteristics([characteristicUUID], for: service)
-        }
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard let service = peripheral.services?.first else { return }
+        peripheral.discoverCharacteristics([characteristicUUID], for: service)
+    }
 
-        func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-            guard let characteristic = service.characteristics?.first else { return }
-            // Save the characteristic for writing later
-            self.esp32PeripheralCharacteristic = characteristic
-        }
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard let characteristic = service.characteristics?.first else { return }
+        // Save the characteristic for writing later
+        self.esp32PeripheralCharacteristic = characteristic
+    }
 
-        func writeValue(_ value: String) {
-            guard let characteristic = esp32PeripheralCharacteristic else { return }
-            let data = Data(value.utf8)
-            esp32Peripheral?.writeValue(data, for: characteristic, type: .withResponse)
-        }
+    func writeValue(_ value: String) {
+        guard let characteristic = esp32PeripheralCharacteristic else { return }
+        let data = Data(value.utf8)
+        esp32Peripheral?.writeValue(data, for: characteristic, type: .withResponse)
+    }
         
-        private var esp32PeripheralCharacteristic: CBCharacteristic?
+    private var esp32PeripheralCharacteristic: CBCharacteristic?
 }
 
 #Preview {
