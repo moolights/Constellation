@@ -79,4 +79,3 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
 #Preview {
     ContentView()
 }
-

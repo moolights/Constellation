@@ -1,14 +1,14 @@
 //
-//  BLEManagerApp.swift
-//  BLEManager
+//  ble_clientApp.swift
+//  ble-client
 //
-//  Created by Wyatt Boublil on 4/22/24.
+//  Created by Wyatt Boublil on 4/26/24.
 //
 
 import SwiftUI
 
 @main
-struct BLEManagerApp: App {
+struct ble_clientApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
