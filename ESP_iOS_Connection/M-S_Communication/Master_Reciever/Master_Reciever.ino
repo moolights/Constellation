@@ -124,7 +124,10 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 }; // MyAdvertisedDeviceCallbacks
 
 void setup() {
+  Serial.begin(115200);
+  Serial.println("Starting Arduino BLE Client application...");
   BLEDevice::init("");
+
   // Retrieve a Scanner and set the callback we want to use to be informed when we
   // have detected a new device.  Specify that we want active scanning and start the
   // scan to run for 5 seconds.
@@ -137,6 +140,10 @@ void setup() {
 } // End of setup.
 
 void loop() {
+
+  // If the flag "doConnect" is true then we have scanned for and found the desired
+  // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
+  // connected we set the connected flag to be true.
   if (doConnect == true) {
     if (connectToServer()) {
       Serial.println("We are now connected to the BLE Server.");
@@ -150,9 +157,12 @@ void loop() {
   // with the current time since boot.
   if (connected) {
     std::string rxValue = pRemoteChar_1->readValue();
-    
+    Serial.print("Characteristic 1 (readValue): ");
+    Serial.println(rxValue.c_str());
     String txValue = "ON";
-    
+    if (random(2)) {
+      txValue = "OFF";
+    }
     pRemoteChar_1->writeValue(txValue.c_str(), txValue.length());
     
   }else if(doScan){
