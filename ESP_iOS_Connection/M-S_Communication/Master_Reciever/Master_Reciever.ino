@@ -20,6 +20,7 @@ static boolean doScan = false;
 // Define pointer for the BLE connection
 static BLEAdvertisedDevice* myDevice;
 BLERemoteCharacteristic* pRemoteChar_1;
+BLEClient* pClient;
 
 // Callback function for Notify function
 static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
@@ -56,7 +57,7 @@ bool connectToServer() {
   Serial.print("Forming a connection to ");
   Serial.println(myDevice->getAddress().toString().c_str());
   
-  BLEClient*  pClient  = BLEDevice::createClient();
+  pClient  = BLEDevice::createClient();
   Serial.println(" - Created client");
 
   pClient->setClientCallbacks(new MyClientCallback());
