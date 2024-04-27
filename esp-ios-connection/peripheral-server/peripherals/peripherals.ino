@@ -10,7 +10,9 @@
 BLECharacteristic *pCharacteristic;
 
 void setup() {
+    Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
+
     BLEDevice::init("Peripheral"); // Create a BLE device (name it how you want)
     BLEServer *pServer = BLEDevice::createServer(); // Establish it as a server
     BLEService *pService = pServer->createService(SERVICE_UUID); // Create a service given a UUID
@@ -20,17 +22,26 @@ void setup() {
     );
     pCharacteristic->addDescriptor(new BLE2902()); // Descriptor adds more details to characteristic and "subscribes" to its notifications
     pService->start(); // Start the server
+
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising(); // Tells clients (e.g. iPhone) that the ESP is ready to be found and how it can be found
     pAdvertising->addServiceUUID(SERVICE_UUID); // Lets client devices know about this specific service
-    BLEDevice::startAdvertising();
+    pAdvertising->setScanResponse(true);
+    pAdvertising->start();
 }
 
 // Just a standard on and off LED program
 void loop() {
+    if (pCharacteristic == nullptr) {
+        return;
+    }
+
     std::string value = pCharacteristic->getValue();
+
     if (value == "ON") {
+        Serial.println(value.c_str());
         digitalWrite(LED_PIN, HIGH);
     } else {
+        Serial.println(value.c_str());
         digitalWrite(LED_PIN, LOW);
     }
 }

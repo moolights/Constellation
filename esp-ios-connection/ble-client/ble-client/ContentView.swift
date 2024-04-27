@@ -13,6 +13,13 @@ struct ContentView: View {
     
     var body: some View {
         VStack {
+            if bleManager.connected() {
+                Label("Device Connected", systemImage: "checkmark.circle") // Need to change to actual peripheral name
+                .padding(.bottom, 150)
+            } else {
+                Label("Device Not Connected", systemImage: "xmark.circle")
+                .padding(.bottom, 150)
+            }
             Button("Turn on LED") {
                 bleManager.writeValue("ON")
             }
@@ -30,6 +37,8 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     private var esp32Peripheral: CBPeripheral?
     private let serviceUUID = CBUUID(string: "12345678-1234-1234-1234-123456789012")
     private let characteristicUUID = CBUUID(string: "87654321-4321-4321-4321-210987654321")
+    private var uuidList: [UUID: String] = [:]
+    @Published var isConnected = false
     
     override init() {
         super.init()
@@ -44,11 +53,14 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         
-        if peripheral.name == "Master" {
+        if peripheral.name != nil { // Accepts all peripherals
+            isConnected = true
+            storePeripheral(peripheral) // Value in dictionary
             esp32Peripheral = peripheral
             esp32Peripheral?.delegate = self
             central.stopScan()
             central.connect(peripheral, options: nil)
+            printPeripherals()
         }
     }
     
@@ -71,6 +83,21 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         guard let characteristic = esp32PeripheralCharacteristic else { return }
         let data = Data(value.utf8)
         esp32Peripheral?.writeValue(data, for: characteristic, type: .withResponse)
+    }
+    
+    // Stores peripheral service UUID
+    func storePeripheral(_ peripheral: CBPeripheral) {
+        uuidList[peripheral.identifier] = peripheral.name
+    }
+    
+    func printPeripherals() {
+        for name in uuidList {
+            print(name)
+        }
+    }
+    
+    func connected() -> Bool {
+        return isConnected
     }
         
     private var esp32PeripheralCharacteristic: CBCharacteristic?
