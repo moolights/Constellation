@@ -4,13 +4,15 @@
  * author unknown
  * updated by chegewara and MoThunderz
  */
-
+#include <string>
 #include "BLEDevice.h"
+#include <map>
 //#include "BLEScan.h"
 
 // Define UUIDs:
-static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
-static BLEUUID    charUUID_1("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+static BLEUUID serviceUUID;
+static BLEUUID charUUID_1("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+std::map<std::string, BLEUUID> mymap;
 
 // Some variables to keep track on device connected
 static boolean doConnect = false;
@@ -28,7 +30,8 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
                             size_t length,
                             bool isNotify) {
   if(pBLERemoteCharacteristic->getUUID().toString() == charUUID_1.toString()) {
-
+    // Call back for updates in characteristic
+    /*
     // convert received bytes to integer
     uint32_t counter = pData[0];
     for(int i = 1; i<length; i++) {
@@ -37,44 +40,45 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
 
     // print to Serial
     Serial.print("Characteristic 1 (Notify) from server: ");
-    Serial.println(counter );  
+    Serial.println(counter ); 
+    */ 
   }
 }
 
 // Callback function that is called whenever a client is connected or disconnected
 class MyClientCallback : public BLEClientCallbacks {
   void onConnect(BLEClient* pclient) {
+    // Connection
   }
 
   void onDisconnect(BLEClient* pclient) {
+    // Disconnect
     connected = false;
-    Serial.println("onDisconnect");
   }
 };
 
 // Function that is run whenever the server is connected
 bool connectToServer() {
-  Serial.print("Forming a connection to ");
-  Serial.println(myDevice->getAddress().toString().c_str());
-  
+  //Serial.print("Forming a connection to ");
+  //Serial.println(myDevice->getAddress().toString().c_str());
+
+  // Create client
   pClient  = BLEDevice::createClient();
-  Serial.println(" - Created client");
 
   pClient->setClientCallbacks(new MyClientCallback());
 
   // Connect to the remove BLE Server.
   pClient->connect(myDevice);  // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
-  Serial.println(" - Connected to server");
+  // Connected to server
 
   // Obtain a reference to the service we are after in the remote BLE server.
   BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
   if (pRemoteService == nullptr) {
-    Serial.print("Failed to find our service UUID: ");
-    Serial.println(serviceUUID.toString().c_str());
+    // Failed to find our service UUID
     pClient->disconnect();
     return false;
   }
-  Serial.println(" - Found our service");
+  // Found our service
 
   connected = true;
   pRemoteChar_1 = pRemoteService->getCharacteristic(charUUID_1);
@@ -82,8 +86,8 @@ bool connectToServer() {
     connected = false;
 
   if(connected == false) {
+    // At least one characteristic UUID not found
     pClient-> disconnect();
-    Serial.println("At least one characteristic UUID not found");
     return false;
   }
   return true;
@@ -93,15 +97,14 @@ bool connectToServer() {
 bool connectCharacteristic(BLERemoteService* pRemoteService, BLERemoteCharacteristic* l_BLERemoteChar) {
   // Obtain a reference to the characteristic in the service of the remote BLE server.
   if (l_BLERemoteChar == nullptr) {
-    Serial.print("Failed to find one of the characteristics");
-    Serial.print(l_BLERemoteChar->getUUID().toString().c_str());
+    // Failed to get characteristics
     return false;
   }
-  Serial.println(" - Found characteristic: " + String(l_BLERemoteChar->getUUID().toString().c_str()));
-
+  
+  // Got characteristics
+  //Serial.println(" - Found characteristic: " + String(l_BLERemoteChar->getUUID().toString().c_str()));
   if(l_BLERemoteChar->canNotify())
     l_BLERemoteChar->registerForNotify(notifyCallback);
-
   return true;
 }
 
@@ -109,24 +112,32 @@ bool connectCharacteristic(BLERemoteService* pRemoteService, BLERemoteCharacteri
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   //Called for each advertising BLE server.
   void onResult(BLEAdvertisedDevice advertisedDevice) {
-    Serial.print("BLE Advertised Device found: ");
-    Serial.println(advertisedDevice.toString().c_str());
+    if (advertisedDevice.getName().size() > 4 && advertisedDevice.getName().substr(0,4) == "Meow") {
+      Serial.print("BLE Advertised Device found: ");
+      Serial.println(advertisedDevice.toString().c_str());
+
+      if (mymap.find(advertisedDevice.getName()) == mymap.end()) {
+        Serial.println("New Paring!");
+        mymap[advertisedDevice.getName()] = advertisedDevice.getServiceUUID(); 
+      }
+      serviceUUID = advertisedDevice.getServiceUUID();
   
-    // We have found a device, let us now see if it contains the service we are looking for.
-    if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID)) {
+      // We have found a device, let us now see if it contains the service we are looking for.
+      if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID)) {
   
-      BLEDevice::getScan()->stop();
-      myDevice = new BLEAdvertisedDevice(advertisedDevice);
-      doConnect = true;
-      doScan = true;
+        BLEDevice::getScan()->stop();
+        myDevice = new BLEAdvertisedDevice(advertisedDevice);
+        doConnect = true;
+        doScan = true;
   
-    } // Found our server
+      } // Found our server
+    }
   } // onResult
 }; // MyAdvertisedDeviceCallbacks
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Starting Arduino BLE Client application...");
+  //Serial.println("Starting Arduino BLE Client application...");
   BLEDevice::init("");
 
   // Retrieve a Scanner and set the callback we want to use to be informed when we
@@ -145,12 +156,11 @@ void loop() {
   // If the flag "doConnect" is true then we have scanned for and found the desired
   // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
   // connected we set the connected flag to be true.
-  Serial.println("Running.");
   if (doConnect == true) {
     if (connectToServer()) {
-      Serial.println("We are now connected to the BLE Server.");
+      //Serial.println("We are now connected to the BLE Server.");
     } else {
-      Serial.println("We have failed to connect to the server; there is nothin more we will do.");
+      //Serial.println("We have failed to connect to the server; there is nothin more we will do.");
     }
     doConnect = false;
   }
@@ -159,12 +169,13 @@ void loop() {
   // with the current time since boot.
   if (connected) {
     std::string rxValue = pRemoteChar_1->readValue();
-    Serial.print("Characteristic 1 (readValue): ");
-    Serial.println(rxValue.c_str());
+    //Serial.print("Characteristic 1 (readValue): ");
+    //Serial.println(rxValue.c_str());
     String txValue = "OFF";
     if (random(2)) {
       txValue = "ON";
     }
+    // Write to char1
     pRemoteChar_1->writeValue(txValue.c_str(), txValue.length());
     if (txValue == "ON") {
       pClient->disconnect();

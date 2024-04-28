@@ -63,7 +63,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
   // Create the BLE Device
-  BLEDevice::init("Slave");
+  BLEDevice::init("Meow1");
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
@@ -98,9 +98,6 @@ void setup() {
 }
 
 void loop() {
-  Serial.print("Running: ");
-  Serial.print(deviceConnected);
-  Serial.println(oldDeviceConnected);
   checkToReconnect();
     // notify changed value
     if (deviceConnected) {
