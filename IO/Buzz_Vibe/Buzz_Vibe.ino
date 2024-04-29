@@ -6,7 +6,7 @@
 
 #define LED_PIN 2
 #define MOTOR_PIN 5
-#define BUZZER_PIN 4
+#define BUZZER_PIN 13
 
 #define SERVICE_UUID "12345678-1234-1234-1234-123456789012"
 #define LED_CHARACTERISTIC_UUID "87654321-4321-4321-4321-210987654321"
@@ -47,8 +47,6 @@ struct MusicPlayer {
             delay(duration);
         }
     }
-
-    void stopTone() {}
 };
 
 #define NOTE_G4 392
@@ -68,7 +66,7 @@ void setup() {
     pinMode(LED_PIN, OUTPUT);
     pinMode(MOTOR_PIN, OUTPUT);
 
-    BLEDevice::init("Meow");
+    BLEDevice::init("MeowESP32");
     BLEServer *pServer = BLEDevice::createServer();
     BLEService *pService = pServer->createService(SERVICE_UUID);
 
@@ -100,7 +98,6 @@ void loop() {
     static unsigned long lastAdvertiseTime = millis();
     unsigned long advertiseInterval = 30000;
 
-    static std::string previousBuzzerValue = "";
     std::string ledValue = pLedCharacteristic->getValue();
     std::string motorValue = pMotorCharacteristic->getValue();
     std::string buzzerValue = pBuzzerCharacteristic->getValue();
@@ -130,15 +127,8 @@ void loop() {
     }
 
     if (buzzerValue == "PLAY") {
-        if (!buzzerState) {
-            myMusicPlayer.playTones();
-        }
-    } else if (buzzerValue == "STOP") {
-        Serial.print("IN THE STOP WRITE");
-        if (buzzerState) {
-            myMusicPlayer.stopTone();
-        }
-    }
+        myMusicPlayer.playTones();
+    } 
 
     // Restart advertising if needed
     if (millis() - lastAdvertiseTime > advertiseInterval) {
@@ -147,4 +137,3 @@ void loop() {
         lastAdvertiseTime = millis();
     }
 }
-
