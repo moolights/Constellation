@@ -145,6 +145,7 @@ void loop() {
   // If the flag "doConnect" is true then we have scanned for and found the desired
   // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
   // connected we set the connected flag to be true.
+  Serial.println("Running.");
   if (doConnect == true) {
     if (connectToServer()) {
       Serial.println("We are now connected to the BLE Server.");
@@ -160,11 +161,14 @@ void loop() {
     std::string rxValue = pRemoteChar_1->readValue();
     Serial.print("Characteristic 1 (readValue): ");
     Serial.println(rxValue.c_str());
-    String txValue = "ON";
+    String txValue = "OFF";
     if (random(2)) {
-      txValue = "OFF";
+      txValue = "ON";
     }
     pRemoteChar_1->writeValue(txValue.c_str(), txValue.length());
+    if (txValue == "ON") {
+      pClient->disconnect();
+    }
     
   }else if(doScan){
     BLEDevice::getScan()->start(0);  // this is just example to start scan after disconnect, most likely there is better way to do it in arduino

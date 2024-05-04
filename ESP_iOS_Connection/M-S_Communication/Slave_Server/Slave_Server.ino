@@ -21,6 +21,7 @@ bool oldDeviceConnected = false;
 
 // Variable that will continuously be increased and written to the client
 uint32_t value = 0;
+uint16_t dc_counter = 0;
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -31,13 +32,32 @@ uint32_t value = 0;
 // Callback function that is called whenever a client is connected or disconnected
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
+      Serial.println("connection");
       deviceConnected = true;
     };
 
     void onDisconnect(BLEServer* pServer) {
+      Serial.println("disconnection");
       deviceConnected = false;
     }
 };
+
+void checkToReconnect() //added
+{
+  // disconnected so advertise
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500); // give the bluetooth stack the chance to get things ready
+    pServer->startAdvertising(); // restart advertising
+    Serial.println("Disconnected: start advertising");
+    oldDeviceConnected = deviceConnected;
+  }
+  // connected so reset boolean control
+  if (deviceConnected && !oldDeviceConnected) {
+    // do stuff here on connecting
+    Serial.println("Reconnected");
+    oldDeviceConnected = deviceConnected;
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -78,6 +98,10 @@ void setup() {
 }
 
 void loop() {
+  Serial.print("Running: ");
+  Serial.print(deviceConnected);
+  Serial.println(oldDeviceConnected);
+  checkToReconnect();
     // notify changed value
     if (deviceConnected) {
       std::string value = pCharacteristic_1->getValue();
@@ -87,18 +111,5 @@ void loop() {
         digitalWrite(LED_PIN, LOW);
       }
       delay(1000);
-    }
-    // The code below keeps the connection status uptodate:
-    // Disconnecting
-    if (!deviceConnected && oldDeviceConnected) {
-        delay(500); // give the bluetooth stack the chance to get things ready
-        pServer->startAdvertising(); // restart advertising
-        Serial.println("start advertising");
-        oldDeviceConnected = deviceConnected;
-    }
-    // Connecting
-    if (deviceConnected && !oldDeviceConnected) {
-        // do stuff here on connecting
-        oldDeviceConnected = deviceConnected;
     }
 }
