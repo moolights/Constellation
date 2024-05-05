@@ -7,8 +7,10 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <ESP32Servo.h>
 
 #define LED_PIN 2
+#define SERVO_PIN 23
 
 // Initialize all pointers
 BLEServer* pServer = NULL;                        // Pointer to the server
@@ -22,6 +24,10 @@ BLE2902 *pBLE2902_3;                              // Pointer to BLE2902 of Chara
 // Some variables to keep track on device connected
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
+
+Servo myServo;
+int servo_pos = 0;
+bool on_servo = false;
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -118,6 +124,9 @@ void setup() {
   pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
   BLEDevice::startAdvertising();
   Serial.println("Waiting a client connection to notify...");
+
+  myServo.attach(SERVO_PIN);
+  myServo.write(0);
 }
 
 void loop() {
@@ -129,13 +138,29 @@ void loop() {
     std::string value_3 = pCharacteristic_3->getValue();
     if (value_1 == "ON") {
       digitalWrite(LED_PIN, HIGH);
+      on_servo = true;
     } else {
       digitalWrite(LED_PIN, LOW);
+      //on_servo = false;
     }
-    Serial.print("Value 2: ");
-    Serial.println(value_2.c_str());
-    Serial.print("Value 3: ");
-    Serial.println(value_3.c_str());
+    //Serial.print("Value 2: ");
+    //Serial.println(value_2.c_str());
+    //Serial.print("Value 3: ");
+    //Serial.println(value_3.c_str());
     delay(1000);
   }
+  Serial.println(on_servo);
+  if (on_servo && servo_pos < 180) {
+    servo_pos += 45;
+    myServo.write(servo_pos);
+    delay(1000);
+  } else if (on_servo && servo_pos == 180) {
+    on_servo = false;
+    //delay(1000);
+  } else if (!on_servo && servo_pos > 0) {
+    servo_pos =0;
+    myServo.write(servo_pos);
+    Serial.println(servo_pos);
+    delay(1000);
+  } 
 }
