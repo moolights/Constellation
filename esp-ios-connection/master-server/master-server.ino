@@ -1,36 +1,118 @@
-#include <BLEDevice.h> // Gets info about connected devices or ones discovered
-#include <BLEServer.h> // Models a server
+#include <BLEDevice.h>
 #include <BLEUtils.h>
-#include <BLE2902.h> // (CCCD) "Subscribes" to characteristic notifications i.e. Writing "ON"
+#include <BLEServer.h>
+#include <BLEAdvertising.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+#include <map>
 
-#define LED_PIN 2
-#define SERVICE_UUID "12345678-1234-1234-1234-123456789012"
-#define CHARACTERISTIC_UUID "87654321-4321-4321-4321-210987654321"
+#define DEVICE_INFO_SERVICE_UUID        "0000180A-0000-1000-8000-00805F9B34FB"
+#define DEVICE_INFO_CHARACTERISTIC_UUID "00002A50-0000-1000-8000-00805F9B34FB"
 
-BLECharacteristic *pCharacteristic;
+#define SCAN_TIME 10 // Scan for 10 seconds
+
+std::map<std::string, std::vector<std::pair<std::string, std::string>>> deviceServices; // Maps device address to a list of services and their characteristics
+
+bool connectToServer(BLEAdvertisedDevice device);
+
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
+    void onResult(BLEAdvertisedDevice advertisedDevice) override {
+        Serial.println("Device found: " + String(advertisedDevice.toString().c_str()));
+        if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(BLEUUID(DEVICE_INFO_SERVICE_UUID))) {
+            Serial.println("Found Our Service on " + String(advertisedDevice.getAddress().toString().c_str()));
+            advertisedDevice.getScan()->stop();
+            connectToServer(advertisedDevice);
+        }
+    }
+};
+
+BLECharacteristic *pDeviceInfoCharacteristic = nullptr; // Declare globally, remove any duplicate declarations
+
+bool connectToServer(BLEAdvertisedDevice device) {
+    BLEClient* pClient = BLEDevice::createClient();
+    Serial.println("Connecting to " + String(device.getAddress().toString().c_str()));
+
+    // Connect to the BLE Server.
+    if (!pClient->connect(&device)) {
+        Serial.println("Failed to connect to server.");
+        return false;
+    }
+    Serial.println("Connected to the server");
+
+    // Obtain a reference to the service we are after in the remote BLE server.
+    BLERemoteService* pRemoteService = pClient->getService(BLEUUID(DEVICE_INFO_SERVICE_UUID));
+    if (pRemoteService == nullptr) {
+        Serial.print("Failed to find our service UUID: ");
+        Serial.println(DEVICE_INFO_SERVICE_UUID);
+        return false;
+    }
+    Serial.println("Found our service");
+
+    discoverCharacteristics(pRemoteService, device.getAddress().toString(), pDeviceInfoCharacteristic);
+
+    pClient->disconnect();
+    return true;
+}
+
+void discoverCharacteristics(BLERemoteService* pRemoteService, std::string address, BLECharacteristic* pDeviceInfoCharacteristic) {
+    std::vector<std::pair<std::string, std::string>> charUuids;
+    std::string deviceInfo = "Device: " + address + "\n";
+
+    auto characteristics = pRemoteService->getCharacteristics();
+    for (auto& characteristic : *characteristics) {
+        BLERemoteCharacteristic* pRemoteCharacteristic = characteristic.second;
+        std::string characteristicValue = pRemoteCharacteristic->readValue();
+        charUuids.push_back({pRemoteCharacteristic->getUUID().toString(), characteristicValue});
+        deviceInfo += "Characteristic: " + pRemoteCharacteristic->getUUID().toString() + "\n";
+    }
+
+    deviceServices[address] = charUuids;
+
+    pDeviceInfoCharacteristic->setValue(deviceInfo);
+    pDeviceInfoCharacteristic->notify();
+}
+
+
+BLEServer *pServer = nullptr;
 
 void setup() {
-    pinMode(LED_PIN, OUTPUT);
-    BLEDevice::init("Master"); // Create a BLE device (name it how you want)
-    BLEServer *pServer = BLEDevice::createServer(); // Establish it as a server
-    BLEService *pService = pServer->createService(SERVICE_UUID); // Create a service given a UUID
-    pCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE  // Creates a characteristic enabling read and write
+    Serial.begin(115200);
+    BLEDevice::init("Bridge");
+
+    // Create BLE Server
+    pServer = BLEDevice::createServer();
+
+    // Create Device Info Service
+    BLEService *pDeviceInfoService = pServer->createService(BLEUUID(DEVICE_INFO_SERVICE_UUID));
+
+    // Create a characteristic for device info
+    pDeviceInfoCharacteristic = pDeviceInfoService->createCharacteristic(
+        BLEUUID(DEVICE_INFO_CHARACTERISTIC_UUID),
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
-    pCharacteristic->addDescriptor(new BLE2902()); // Descriptor adds more details to characteristic and "subscribes" to its notifications
-    pService->start(); // Start the server
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising(); // Tells clients (e.g. iPhone) that the ESP is ready to be found and how it can be found
-    pAdvertising->addServiceUUID(SERVICE_UUID); // Lets client devices know about this specific service
-    BLEDevice::startAdvertising();
+
+    // Start the service
+    pDeviceInfoService->start();
+
+    // Start advertising
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(BLEUUID(DEVICE_INFO_SERVICE_UUID));
+    pAdvertising->setScanResponse(true);
+    pAdvertising->start();
+
+    // Initialize BLE Scan
+    BLEScan* pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setActiveScan(true);
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(99);
 }
 
-// Just a standard on and off LED program
 void loop() {
-    std::string value = pCharacteristic->getValue();
-    if (value == "ON") {
-        digitalWrite(LED_PIN, HIGH);
-    } else {
-        digitalWrite(LED_PIN, LOW);
-    }
+    BLEScan* pBLEScan = BLEDevice::getScan();
+    BLEScanResults foundDevices = pBLEScan->start(SCAN_TIME, false);
+    Serial.println("Scan done!");
+    pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
+    delay(2000);
 }
+

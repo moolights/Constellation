@@ -3,12 +3,13 @@ import CoreBluetooth
 
 struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
-    @State private var toggleSwitches: [String: Bool] = ["ledOn": false]
+    @State private var toggleSwitches: [UUID: [String: Bool]] = [:]
+    @State private var isPlayButtonEnabled: Bool = true
 
     let characteristicNames: [String: String] = [
-        "87654321-4321-4321-4321-210987654321": "LED Control",
-        "43214321-1234-4321-1234-432112345678": "Motor Control",
-        "21098765-8765-4321-4321-876543211098": "Buzzer Control"
+        "87654321-4321-4321-4321-210987654321": "LED",
+        "43214321-1234-4321-1234-432112345678": "Move Feather",
+        "21098765-8765-4321-4321-876543211098": "Play Sound"
     ]
 
     var body: some View {
@@ -28,50 +29,39 @@ struct ContentView: View {
                                 Text("\(characteristicName)")
                                 Spacer()
 
-                                if characteristicName == "LED Control" {
+                                if characteristicName == "LED" {
                                     Toggle(isOn: Binding(
-                                        get: { self.toggleSwitches["ledOn", default: false] },
+                                        get: { self.toggleSwitches[peripheral.identifier]?["ledOn"] ?? false },
                                         set: { newValue in
-                                            self.toggleSwitches["ledOn"] = newValue
+                                            self.toggleSwitches[peripheral.identifier, default: [:]]["ledOn"] = newValue
                                             bleManager.writeValue(peripheral: peripheral, characteristic: characteristic, value: newValue ? "ON" : "OFF")
-                                            print("App sent LED \(newValue) command")
+                                            print("App sent LED \(newValue) command to \(peripheral.name ?? "Unknown")")
                                         }
                                     )) {
                                         EmptyView()
                                     }
                                     .labelsHidden()
                                     .toggleStyle(SwitchToggleStyle(tint: .blue))
-                                } else if characteristicName == "Buzzer Control" {
-                                    HStack(spacing: 20) {
-                                        Spacer()
-                                        Button("PLAY") {
-                                            bleManager.writeValue(peripheral: peripheral, characteristic: characteristic,
-                                                value: "PLAY")
-                                            print("App sent PLAY command") // Debugging
+                                } else if characteristicName == "Play Sound" {
+                                    Toggle(isOn: Binding(
+                                        get: { self.toggleSwitches[peripheral.identifier]?["playSound"] ?? false },
+                                        set: { newValue in
+                                            self.toggleSwitches[peripheral.identifier, default: [:]]["playSound"] = newValue
+                                            let value = newValue ? "PLAY" : "STOP"
+                                            bleManager.writeValue(peripheral: peripheral, characteristic: characteristic, value: value)
+                                            print("App sent \(value) command to \(peripheral.name ?? "Unknown")")
                                         }
-                                        .padding(10)
-                                        .background(Color.cyan)
-                                        .foregroundColor(Color.white)
-                                        .cornerRadius(8)
-                                        .buttonStyle(PlainButtonStyle())
-                                        
-                                        Button("STOP") {
-                                            bleManager.writeValue(peripheral: peripheral, characteristic: characteristic,
-                                                value: "STOP")
-                                            print("App sent STOP command") // Debugging
-                                        }
-                                        .padding(10)
-                                        .background(Color.gray)
-                                        .foregroundColor(Color.white)
-                                        .cornerRadius(8)
-                                        .buttonStyle(PlainButtonStyle())
+                                    )) {
+                                        EmptyView()
                                     }
+                                    .labelsHidden()
+                                    .toggleStyle(SwitchToggleStyle(tint: .green))
                                 } else {
                                     HStack(spacing: 20) {
                                         Spacer()
                                         Button("ON") {
                                             bleManager.writeValue(peripheral: peripheral, characteristic: characteristic, value: "ON")
-                                            print("App sent ON command for motor")
+                                            print("App sent ON command for motor to \(peripheral.name ?? "Unknown")")
                                         }
                                         .padding(10)
                                         .background(Color.green)
@@ -81,7 +71,7 @@ struct ContentView: View {
 
                                         Button("OFF") {
                                             bleManager.writeValue(peripheral: peripheral, characteristic: characteristic, value: "OFF")
-                                            print("App sent OFF command for motor")
+                                            print("App sent OFF command for motor to \(peripheral.name ?? "Unknown")")
                                         }
                                         .padding(10)
                                         .background(Color.red)
@@ -103,8 +93,6 @@ struct ContentView: View {
 }
 
 
-
-
 class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     private var centralManager: CBCentralManager!
@@ -118,21 +106,41 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     }
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        if central.state == .poweredOn {
-            central.scanForPeripherals(withServices: nil, options: nil) // Continue scanning
-        } else {
+        switch central.state {
+        case .poweredOn:
+            if connectedPeripherals.isEmpty {
+                // Start scanning if no devices are connected
+                central.scanForPeripherals(withServices: nil, options: nil)
+            } else {
+                // Try to reconnect to known peripherals
+                for peripheral in connectedPeripherals {
+                    if peripheral.state != .connected {
+                        central.connect(peripheral, options: nil)
+                    }
+                }
+            }
+        default:
             print("Bluetooth is not powered on. Current state: \(central.state.rawValue)")
         }
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        print("Discovered \(peripheral.name ?? "Unknown") at \(RSSI)")
+
         if let peripheralName = peripheral.name, peripheralName.hasPrefix("Meow") {
-            connectedPeripherals.append(peripheral)
-            peripheral.delegate = self
-            central.connect(peripheral, options: nil)
-            isConnected = true
+            print("Attempting to connect to \(peripheralName)")
+            // Check if the peripheral is already connected before adding it
+            if !connectedPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+                connectedPeripherals.append(peripheral)
+                peripheral.delegate = self
+                central.connect(peripheral, options: nil)
+                isConnected = true
+            }
+        } else {
+            print("Ignored \(peripheral.name ?? "Unknown")")
         }
     }
+
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         peripheral.discoverServices(nil) // Ensure connection is established

@@ -3,9 +3,10 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <ESP32Servo.h>
 
 #define LED_PIN 2
-#define MOTOR_PIN 5
+#define FEATHER_PIN 18
 #define BUZZER_PIN 4
 
 #define SERVICE_UUID "12345678-1234-1234-1234-123456789012"
@@ -25,177 +26,99 @@ bool ledState = false;
 bool motorState = false;
 bool buzzerState = false;
 
+struct ServoMotorController {
+    Servo servo;
+    int pin;
+    int angle;
+
+    ServoMotorController(int servoPin) : pin(servoPin), angle(90) {  // Start at a neutral angle
+        servo.attach(pin, 500, 2500);
+    }
+
+    void attach() {
+        ESP32PWM::allocateTimer(0);  // Allocate a timer, each servo must have a different timer if used simultaneously
+        servo.setPeriodHertz(50);    // Standard 50hz servo
+        servo.attach(pin, 500, 2500);
+    }
+};
+
+ServoMotorController featherServo(FEATHER_PIN);
+
 struct MusicPlayer {
     int buzzerPin;
     const int *notes;
     const int *durations;
     int totalNotes;
     float speed;
-    
+
     MusicPlayer(int pin, const int notesArray[], const int durationsArray[], int numNotes, float songSpeed)
     : buzzerPin(pin), notes(notesArray), durations(durationsArray), totalNotes(numNotes), speed(songSpeed) {
         pinMode(buzzerPin, OUTPUT);
     }
-    
+
     void playTones() {
-        int wholenote = (60000 * 4) / (160 * speed);  // Calculate the whole note duration
         for (int i = 0; i < totalNotes; i++) {
-            int noteDuration = durations[i];
-            bool dotted = noteDuration < 0;
-            if (dotted) {
-                noteDuration = -noteDuration;
+            int frequency = notes[i];
+            int duration = durations[i]; // duration in milliseconds
+            if (frequency == 0) {  // Rest note
+                delay(duration);
+            } else {  // Play a tone
+                playFrequency(frequency, duration);
             }
-            int noteLength = wholenote / noteDuration;
-            if (dotted) {
-                noteLength = noteLength * 3 / 2;  // Adjust for dotted notes
-            }
-            int frequency = notes[i * 2];  // Note frequencies are every other entry
-            if (frequency == REST) {
-                noTone(buzzerPin);
-            } else {
-                tone(buzzerPin, frequency, noteLength);
-            }
-            delay(noteLength);  // Wait for the note to finish before moving to the next
         }
     }
 
-    void stopTone() {}
+    void playFrequency(int frequency, int duration) {
+        long delayValue = (long)(1000000 / frequency / 2); // Calculate the delay value between transitions
+        long numCycles = frequency * duration / 1000; // Number of cycles of wave
+        
+        for (long i = 0; i < numCycles; i++) {
+            digitalWrite(BUZZER_PIN, HIGH); // Write the buzzer pin high to push the diaphragm
+            delayMicroseconds(delayValue); // Wait for the specified delayValue
+            digitalWrite(BUZZER_PIN, LOW); // Write the buzzer pin low to pull the diaphragm
+            delayMicroseconds(delayValue); // Wait for the specified delayValue
+        }
+    }
+
+    void stopTone() {
+        digitalWrite(buzzerPin, LOW); // Ensure no tone is playing when stopped
+    }
 };
 
-#define NOTE_B0  31
-#define NOTE_C1  33
-#define NOTE_CS1 35
-#define NOTE_D1  37
-#define NOTE_DS1 39
-#define NOTE_E1  41
-#define NOTE_F1  44
-#define NOTE_FS1 46
-#define NOTE_G1  49
-#define NOTE_GS1 52
-#define NOTE_A1  55
-#define NOTE_AS1 58
-#define NOTE_B1  62
-#define NOTE_C2  65
-#define NOTE_CS2 69
-#define NOTE_D2  73
-#define NOTE_DS2 78
-#define NOTE_E2  82
-#define NOTE_F2  87
-#define NOTE_FS2 93
-#define NOTE_G2  98
-#define NOTE_GS2 104
-#define NOTE_A2  110
-#define NOTE_AS2 117
-#define NOTE_B2  123
-#define NOTE_C3  131
-#define NOTE_CS3 139
-#define NOTE_D3  147
-#define NOTE_DS3 156
-#define NOTE_E3  165
-#define NOTE_F3  175
-#define NOTE_FS3 185
-#define NOTE_G3  196
-#define NOTE_GS3 208
-#define NOTE_A3  220
-#define NOTE_AS3 233
-#define NOTE_B3  247
-#define NOTE_C4  262
-#define NOTE_CS4 277
-#define NOTE_D4  294
-#define NOTE_DS4 311
-#define NOTE_E4  330
-#define NOTE_F4  349
-#define NOTE_FS4 370
-#define NOTE_G4  392
-#define NOTE_GS4 415
-#define NOTE_A4  440
-#define NOTE_AS4 466
-#define NOTE_B4  494
-#define NOTE_C5  523
-#define NOTE_CS5 554
-#define NOTE_D5  587
-#define NOTE_DS5 622
-#define NOTE_E5  659
-#define NOTE_F5  698
-#define NOTE_FS5 740
-#define NOTE_G5  784
-#define NOTE_GS5 831
-#define NOTE_A5  880
-#define NOTE_AS5 932
-#define NOTE_B5  988
-#define NOTE_C6  1047
-#define NOTE_CS6 1109
-#define NOTE_D6  1175
-#define NOTE_DS6 1245
-#define NOTE_E6  1319
-#define NOTE_F6  1397
-#define NOTE_FS6 1480
-#define NOTE_G6  1568
-#define NOTE_GS6 1661
-#define NOTE_A6  1760
-#define NOTE_AS6 1865
-#define NOTE_B6  1976
-#define NOTE_C7  2093
-#define NOTE_CS7 2217
-#define NOTE_D7  2349
-#define NOTE_DS7 2489
-#define NOTE_E7  2637
-#define NOTE_F7  2794
-#define NOTE_FS7 2960
-#define NOTE_G7  3136
-#define NOTE_GS7 3322
-#define NOTE_A7  3520
-#define NOTE_AS7 3729
-#define NOTE_B7  3951
-#define NOTE_C8  4186
-#define NOTE_CS8 4435
-#define NOTE_D8  4699
-#define NOTE_DS8 4978
+// Notes to be played
+#define NOTE_G4 392
+#define NOTE_A4 440
+#define NOTE_B4 494
+#define NOTE_D5 587
 
+// Notes and durations
 int melody[] = {
-
-    REST,1,
-    REST,1,
-    NOTE_C4,4, NOTE_E4,4, NOTE_G4,4, NOTE_E4,4, 
-    NOTE_C4,4, NOTE_E4,8, NOTE_G4,-4, NOTE_E4,4,
-    NOTE_A3,4, NOTE_C4,4, NOTE_E4,4, NOTE_C4,4,
-    NOTE_A3,4, NOTE_C4,8, NOTE_E4,-4, NOTE_C4,4,
-    NOTE_G3,4, NOTE_B3,4, NOTE_D4,4, NOTE_B3,4,
-    NOTE_G3,4, NOTE_B3,8, NOTE_D4,-4, NOTE_B3,4,
-
-    NOTE_G3,4, NOTE_G3,8, NOTE_G3,-4, NOTE_G3,8, NOTE_G3,4, 
-    NOTE_G3,4, NOTE_G3,4, NOTE_G3,8, NOTE_G3,4,
-    NOTE_C4,4, NOTE_E4,4, NOTE_G4,4, NOTE_E4,4, 
-    NOTE_C4,4, NOTE_E4,8, NOTE_G4,-4, NOTE_E4,4,
-    NOTE_A3,4, NOTE_C4,4, NOTE_E4,4, NOTE_C4,4,
-    NOTE_A3,4, NOTE_C4,8, NOTE_E4,-4, NOTE_C4,4,
-    NOTE_G3,4, NOTE_B3,4, NOTE_D4,4, NOTE_B3,4,
-    NOTE_G3,4, NOTE_B3,8, NOTE_D4,-4, NOTE_B3,4,
-
-    NOTE_G3,-1, 
+    NOTE_D5, NOTE_B4, 0,
+    NOTE_A4, NOTE_G4, 0,
+    NOTE_D5, NOTE_B4, 0,
+    NOTE_A4, NOTE_G4, 0
 };
 
-const int durations[] = {
-    1, 4, 4, 4, 4, 4, 8, -4, 4,
-    4, 4, 4, 4, 4, 8, -4, 4,
-    4, 4, 4, 4, 4, 8, -4, 4,
-    4, 8, -4, 8, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 8, -4, 4,
-    4, 4, 4, 4, 4, 8, -4, 4,
-    4, 4, 4, 4, 4, 8, -4, 4, -1
+int durations[] = {
+    200, 200, 400,  // Decrease note duration from 250 to 200, pause from 500 to 400
+    200, 200, 400,
+    200, 200, 400,
+    200, 200, 400
 };
 
-int totalNotes = sizeof(melody) / (2 * sizeof(int));  // Number of note-duration pairs
+int totalNotes = sizeof(melody) / sizeof(int);  // Number of notes
 
-MusicPlayer myMusicPlayer(BUZZER_PIN, melody, durations, totalNotes, 1.0);
+float songSpeed = .7;
+
+MusicPlayer myMusicPlayer(BUZZER_PIN, melody, durations, totalNotes, songSpeed);
 
 void setup() {
     Serial.begin(115200);
 
     pinMode(LED_PIN, OUTPUT);
-    pinMode(MOTOR_PIN, OUTPUT);
+    featherServo.attach();
 
-    BLEDevice::init("Meow");
+    BLEDevice::init("MeowMeow");
     BLEServer *pServer = BLEDevice::createServer();
     BLEService *pService = pServer->createService(SERVICE_UUID);
 
@@ -223,14 +146,23 @@ void setup() {
     pAdvertising->start();
 }
 
+unsigned long lastMotorMoveTime = 0;
+const long motorMoveInterval = 2000;
+
 void loop() {
     static unsigned long lastAdvertiseTime = millis();
     unsigned long advertiseInterval = 30000;
-
+    static unsigned long lastToggleTime = 0;
+    const long toggleInterval = 500;
+    unsigned long currentMillis = millis();
+    
     static std::string previousBuzzerValue = "";
     std::string ledValue = pLedCharacteristic->getValue();
     std::string motorValue = pMotorCharacteristic->getValue();
     std::string buzzerValue = pBuzzerCharacteristic->getValue();
+
+    Serial.print("Motor Value: ");
+    Serial.println(motorValue.c_str());
 
     if (ledValue == "ON") {
         if (!ledState) {
@@ -245,24 +177,25 @@ void loop() {
     }
 
     if (motorValue == "ON") {
-        if (!motorState) {
-            digitalWrite(MOTOR_PIN, HIGH);
-            motorState = true;
+        if (currentMillis - lastToggleTime > toggleInterval) {
+            if (featherServo.angle == 0) {
+                featherServo.servo.write(180);
+                featherServo.angle = 180;
+            } else {
+                featherServo.servo.write(0);
+                featherServo.angle = 0;
+            }
+            lastToggleTime = currentMillis;
         }
-    } else if (motorValue == "OFF") {
-        if (motorState) {
-            digitalWrite(MOTOR_PIN, LOW);
-            motorState = false;
-        }
+    } else {
+        featherServo.servo.write(90);  // Neutral position when "ON" is not active
+        featherServo.angle = 90;
     }
 
     if (buzzerValue == "PLAY") {
-        myMusicPlayer.playTones();
+        myMusicPlayer.playTones();  // Start playing the melody
     } else if (buzzerValue == "STOP") {
-        Serial.print("IN THE STOP WRITE");
-        if (buzzerState) {
-            myMusicPlayer.stopTone();
-        }
+        myMusicPlayer.stopTone();  // Stop the melody immediately
     }
 
     // Restart advertising if needed
