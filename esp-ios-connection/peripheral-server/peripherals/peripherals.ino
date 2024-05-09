@@ -5,7 +5,7 @@
 #include <BLE2902.h>
 #include <ESP32Servo.h>
 
-#define LED_PIN 2
+#define LED_PIN 21
 #define FEATHER_PIN 18
 #define BUZZER_PIN 4
 
@@ -153,7 +153,7 @@ void loop() {
     static unsigned long lastAdvertiseTime = millis();
     unsigned long advertiseInterval = 30000;
     static unsigned long lastToggleTime = 0;
-    const long toggleInterval = 500;
+    const long toggleInterval = 700;
     unsigned long currentMillis = millis();
     
     static std::string previousBuzzerValue = "";
@@ -178,12 +178,12 @@ void loop() {
 
     if (motorValue == "ON") {
         if (currentMillis - lastToggleTime > toggleInterval) {
-            if (featherServo.angle == 0) {
-                featherServo.servo.write(180);
-                featherServo.angle = 180;
+            if (featherServo.angle == 60) {
+                featherServo.servo.write(120);
+                featherServo.angle = 120;
             } else {
-                featherServo.servo.write(0);
-                featherServo.angle = 0;
+                featherServo.servo.write(60);
+                featherServo.angle = 60;
             }
             lastToggleTime = currentMillis;
         }
