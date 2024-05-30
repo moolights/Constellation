@@ -1,47 +1,236 @@
-#include <BLEDevice.h> // Gets info about connected devices or ones discovered
-#include <BLEServer.h> // Models a server
+#include <Arduino.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
 #include <BLEUtils.h>
-#include <BLE2902.h> // (CCCD) "Subscribes" to characteristic notifications i.e. Writing "ON"
+#include <BLE2902.h>
+#include <ESP32Servo.h>
 
-#define LED_PIN 2
+#define LED_PIN 21
+#define FEATHER_PIN 18
+#define TREAT_PIN 23
+#define BUZZER_PIN 4
+
 #define SERVICE_UUID "12345678-1234-1234-1234-123456789012"
-#define CHARACTERISTIC_UUID "87654321-4321-4321-4321-210987654321"
+#define LED_CHARACTERISTIC_UUID "87654321-4321-4321-4321-210987654321"
+#define MOTOR_CHARACTERISTIC_UUID "43214321-1234-4321-1234-432112345678"
+#define BUZZER_CHARACTERISTIC_UUID "21098765-8765-4321-4321-876543211098"
+#define TREAT_CHARACTERISTIC_UUID "56781234-4321-4321-4321-876543210987"
 
-BLECharacteristic *pCharacteristic;
+#define REST 0
+
+BLECharacteristic *pLedCharacteristic;
+BLECharacteristic *pMotorCharacteristic;
+BLECharacteristic *pBuzzerCharacteristic;
+BLECharacteristic *pTreatCharacteristic;
+
+BLEAdvertising *pAdvertising; // Global variable for advertising
+
+bool ledState = false;
+bool motorState = false;
+bool buzzerState = false;
+
+struct ServoMotorController {
+    Servo servo;
+    int pin;
+    int angle;
+    int increment;
+
+    ServoMotorController(int servoPin) : pin(servoPin), angle(120), increment(60) {  // Start at 120 degrees
+        servo.attach(pin, 500, 2500);
+    }
+
+    void attach() {
+        ESP32PWM::allocateTimer(0);  // Allocate a timer, each servo must have a different timer if used simultaneously
+        servo.setPeriodHertz(50);    // Standard 50hz servo
+        servo.attach(pin, 500, 2500);
+        servo.write(angle); // Set initial position
+    }
+
+    void rotate() {
+        angle += increment;
+        if (angle >= 180 || angle <= 120) {
+            increment = -increment;  // Reverse direction at limits
+        }
+        servo.write(angle);
+        Serial.print("Servo rotated to angle: ");
+        Serial.println(angle); // Debug statement
+    }
+};
+
+ServoMotorController featherServo(FEATHER_PIN);
+ServoMotorController treatServo(TREAT_PIN);
+
+struct MusicPlayer {
+    int buzzerPin;
+    const int *notes;
+    const int *durations;
+    int totalNotes;
+    float speed;
+
+    MusicPlayer(int pin, const int notesArray[], const int durationsArray[], int numNotes, float songSpeed)
+    : buzzerPin(pin), notes(notesArray), durations(durationsArray), totalNotes(numNotes), speed(songSpeed) {
+        pinMode(buzzerPin, OUTPUT);
+    }
+
+    void playTones() {
+        for (int i = 0; i < totalNotes; i++) {
+            int frequency = notes[i];
+            int duration = durations[i]; // duration in milliseconds
+            if (frequency == 0) {  // Rest note
+                delay(duration);
+            } else {  // Play a tone
+                playFrequency(frequency, duration);
+            }
+        }
+    }
+
+    void playFrequency(int frequency, int duration) {
+        long delayValue = (long)(1000000 / frequency / 2); // Calculate the delay value between transitions
+        long numCycles = frequency * duration / 1000; // Number of cycles of wave
+        
+        for (long i = 0; i < numCycles; i++) {
+            digitalWrite(BUZZER_PIN, HIGH); // Write the buzzer pin high to push the diaphragm
+            delayMicroseconds(delayValue); // Wait for the specified delayValue
+            digitalWrite(BUZZER_PIN, LOW); // Write the buzzer pin low to pull the diaphragm
+            delayMicroseconds(delayValue); // Wait for the specified delayValue
+        }
+    }
+
+    void stopTone() {
+        digitalWrite(buzzerPin, LOW); // Ensure no tone is playing when stopped
+    }
+};
+
+// Notes to be played
+#define NOTE_G4 392
+#define NOTE_A4 440
+#define NOTE_B4 494
+#define NOTE_D5 587
+
+// Notes and durations
+int melody[] = {
+    NOTE_D5, NOTE_B4, 0,
+    NOTE_A4, NOTE_G4, 0,
+    NOTE_D5, NOTE_B4, 0,
+    NOTE_A4, NOTE_G4, 0
+};
+
+int durations[] = {
+    200, 200, 400,  // Decrease note duration from 250 to 200, pause from 500 to 400
+    200, 200, 400,
+    200, 200, 400,
+    200, 200, 400
+};
+
+int totalNotes = sizeof(melody) / sizeof(int);  // Number of notes
+
+float songSpeed = .7;
+
+MusicPlayer myMusicPlayer(BUZZER_PIN, melody, durations, totalNotes, songSpeed);
 
 void setup() {
     Serial.begin(115200);
+
     pinMode(LED_PIN, OUTPUT);
+    featherServo.attach();
+    treatServo.attach();
 
-    BLEDevice::init("Peripheral"); // Create a BLE device (name it how you want)
-    BLEServer *pServer = BLEDevice::createServer(); // Establish it as a server
-    BLEService *pService = pServer->createService(SERVICE_UUID); // Create a service given a UUID
-    pCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE  // Creates a characteristic enabling read and write
+    BLEDevice::init("MeowMeow");
+    BLEServer *pServer = BLEDevice::createServer();
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pLedCharacteristic = pService->createCharacteristic(
+        LED_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
     );
-    pCharacteristic->addDescriptor(new BLE2902()); // Descriptor adds more details to characteristic and "subscribes" to its notifications
-    pService->start(); // Start the server
+    pMotorCharacteristic = pService->createCharacteristic(
+        MOTOR_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+    );
+    pBuzzerCharacteristic = pService->createCharacteristic(
+        BUZZER_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+    );
+    pTreatCharacteristic = pService->createCharacteristic(
+        TREAT_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+    );
 
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising(); // Tells clients (e.g. iPhone) that the ESP is ready to be found and how it can be found
-    pAdvertising->addServiceUUID(SERVICE_UUID); // Lets client devices know about this specific service
+    pLedCharacteristic->addDescriptor(new BLE2902());
+    pMotorCharacteristic->addDescriptor(new BLE2902());
+    pBuzzerCharacteristic->addDescriptor(new BLE2902());
+    pTreatCharacteristic->addDescriptor(new BLE2902());
+
+    pService->start();
+    pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->setScanResponse(true);
     pAdvertising->start();
 }
 
-// Just a standard on and off LED program
+unsigned long lastMotorMoveTime = 0;
+const long motorMoveInterval = 2000;
+
 void loop() {
-    if (pCharacteristic == nullptr) {
-        return;
+    static unsigned long lastAdvertiseTime = millis();
+    unsigned long advertiseInterval = 30000;
+    static unsigned long lastToggleTime = 0;
+    const long toggleInterval = 700;
+    unsigned long currentMillis = millis();
+    
+    static std::string previousBuzzerValue = "";
+    std::string ledValue = pLedCharacteristic->getValue();
+    std::string motorValue = pMotorCharacteristic->getValue();
+    std::string buzzerValue = pBuzzerCharacteristic->getValue();
+    std::string treatValue = pTreatCharacteristic->getValue();
+
+    if (ledValue == "ON") {
+        if (!ledState) {
+            digitalWrite(LED_PIN, HIGH);
+            ledState = true;
+        }
+    } else if (ledValue == "OFF") {
+        if (ledState) {
+            digitalWrite(LED_PIN, LOW);
+            ledState = false;
+        }
     }
 
-    std::string value = pCharacteristic->getValue();
-
-    if (value == "ON") {
-        Serial.println(value.c_str());
-        digitalWrite(LED_PIN, HIGH);
+    if (motorValue == "ON") {
+        if (currentMillis - lastToggleTime > toggleInterval) {
+            if (featherServo.angle == 180) {
+                featherServo.servo.write(140);
+                featherServo.angle = 140;
+            } else {
+                featherServo.servo.write(180);
+                featherServo.angle = 180;
+            }
+            lastToggleTime = currentMillis;
+        }
     } else {
-        Serial.println(value.c_str());
-        digitalWrite(LED_PIN, LOW);
+        featherServo.servo.write(180);  // Neutral position when "ON" is not active
+        featherServo.angle = 180;
+    }
+
+    if (buzzerValue == "PLAY") {
+        myMusicPlayer.playTones();  // Start playing the melody
+    } else if (buzzerValue == "STOP") {
+        myMusicPlayer.stopTone();  // Stop the melody immediately
+    }
+
+    if (treatValue == "DISPENSE") {
+        Serial.println("DISPENSE command received"); // Debug statement
+        treatServo.rotate();  // Rotate the treat dispenser servo
+        pTreatCharacteristic->setValue(""); // Reset the characteristic value
+        delay(500); // Small delay to ensure motor has time to move
+    }
+
+    // Restart advertising if needed
+    if (millis() - lastAdvertiseTime > advertiseInterval) {
+        pAdvertising->stop();
+        pAdvertising->start();
+        lastAdvertiseTime = millis();
     }
 }
+
+
