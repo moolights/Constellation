@@ -9,7 +9,8 @@ struct ContentView: View {
     let characteristicNames: [String: String] = [
         "87654321-4321-4321-4321-210987654321": "LED",
         "43214321-1234-4321-1234-432112345678": "Move Feather",
-        "21098765-8765-4321-4321-876543211098": "Play Sound"
+        "21098765-8765-4321-4321-876543211098": "Play Sound",
+        "56781234-4321-4321-4321-876543210987": "Dispense Treat"
     ]
 
     var body: some View {
@@ -56,6 +57,16 @@ struct ContentView: View {
                                     }
                                     .labelsHidden()
                                     .toggleStyle(SwitchToggleStyle(tint: .green))
+                                } else if characteristicName == "Dispense Treat" {
+                                    Button("DISPENSE") {
+                                        bleManager.writeValue(peripheral: peripheral, characteristic: characteristic, value: "DISPENSE")
+                                        print("App sent DISPENSE command to \(peripheral.name ?? "Unknown")")
+                                    }
+                                    .padding(10)
+                                    .background(Color.orange)
+                                    .foregroundColor(Color.white)
+                                    .cornerRadius(8)
+                                    .buttonStyle(PlainButtonStyle())
                                 } else {
                                     HStack(spacing: 20) {
                                         Spacer()
@@ -91,7 +102,6 @@ struct ContentView: View {
         .padding()
     }
 }
-
 
 class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
@@ -140,7 +150,6 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             print("Ignored \(peripheral.name ?? "Unknown")")
         }
     }
-
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         peripheral.discoverServices(nil) // Ensure connection is established

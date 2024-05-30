@@ -7,18 +7,21 @@
 
 #define LED_PIN 21
 #define FEATHER_PIN 18
+#define TREAT_PIN 23
 #define BUZZER_PIN 4
 
 #define SERVICE_UUID "12345678-1234-1234-1234-123456789012"
 #define LED_CHARACTERISTIC_UUID "87654321-4321-4321-4321-210987654321"
 #define MOTOR_CHARACTERISTIC_UUID "43214321-1234-4321-1234-432112345678"
 #define BUZZER_CHARACTERISTIC_UUID "21098765-8765-4321-4321-876543211098"
+#define TREAT_CHARACTERISTIC_UUID "56781234-4321-4321-4321-876543210987"
 
-#define REST      0
+#define REST 0
 
 BLECharacteristic *pLedCharacteristic;
 BLECharacteristic *pMotorCharacteristic;
 BLECharacteristic *pBuzzerCharacteristic;
+BLECharacteristic *pTreatCharacteristic;
 
 BLEAdvertising *pAdvertising; // Global variable for advertising
 
@@ -30,8 +33,9 @@ struct ServoMotorController {
     Servo servo;
     int pin;
     int angle;
+    int increment;
 
-    ServoMotorController(int servoPin) : pin(servoPin), angle(90) {  // Start at a neutral angle
+    ServoMotorController(int servoPin) : pin(servoPin), angle(120), increment(60) {  // Start at 120 degrees
         servo.attach(pin, 500, 2500);
     }
 
@@ -39,10 +43,22 @@ struct ServoMotorController {
         ESP32PWM::allocateTimer(0);  // Allocate a timer, each servo must have a different timer if used simultaneously
         servo.setPeriodHertz(50);    // Standard 50hz servo
         servo.attach(pin, 500, 2500);
+        servo.write(angle); // Set initial position
+    }
+
+    void rotate() {
+        angle += increment;
+        if (angle >= 180 || angle <= 120) {
+            increment = -increment;  // Reverse direction at limits
+        }
+        servo.write(angle);
+        Serial.print("Servo rotated to angle: ");
+        Serial.println(angle); // Debug statement
     }
 };
 
 ServoMotorController featherServo(FEATHER_PIN);
+ServoMotorController treatServo(TREAT_PIN);
 
 struct MusicPlayer {
     int buzzerPin;
@@ -117,6 +133,7 @@ void setup() {
 
     pinMode(LED_PIN, OUTPUT);
     featherServo.attach();
+    treatServo.attach();
 
     BLEDevice::init("MeowMeow");
     BLEServer *pServer = BLEDevice::createServer();
@@ -134,10 +151,15 @@ void setup() {
         BUZZER_CHARACTERISTIC_UUID,
         BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
     );
+    pTreatCharacteristic = pService->createCharacteristic(
+        TREAT_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY
+    );
 
     pLedCharacteristic->addDescriptor(new BLE2902());
     pMotorCharacteristic->addDescriptor(new BLE2902());
     pBuzzerCharacteristic->addDescriptor(new BLE2902());
+    pTreatCharacteristic->addDescriptor(new BLE2902());
 
     pService->start();
     pAdvertising = BLEDevice::getAdvertising();
@@ -160,9 +182,7 @@ void loop() {
     std::string ledValue = pLedCharacteristic->getValue();
     std::string motorValue = pMotorCharacteristic->getValue();
     std::string buzzerValue = pBuzzerCharacteristic->getValue();
-
-    Serial.print("Motor Value: ");
-    Serial.println(motorValue.c_str());
+    std::string treatValue = pTreatCharacteristic->getValue();
 
     if (ledValue == "ON") {
         if (!ledState) {
@@ -178,24 +198,31 @@ void loop() {
 
     if (motorValue == "ON") {
         if (currentMillis - lastToggleTime > toggleInterval) {
-            if (featherServo.angle == 60) {
-                featherServo.servo.write(120);
-                featherServo.angle = 120;
+            if (featherServo.angle == 180) {
+                featherServo.servo.write(140);
+                featherServo.angle = 140;
             } else {
-                featherServo.servo.write(60);
-                featherServo.angle = 60;
+                featherServo.servo.write(180);
+                featherServo.angle = 180;
             }
             lastToggleTime = currentMillis;
         }
     } else {
-        featherServo.servo.write(90);  // Neutral position when "ON" is not active
-        featherServo.angle = 90;
+        featherServo.servo.write(180);  // Neutral position when "ON" is not active
+        featherServo.angle = 180;
     }
 
     if (buzzerValue == "PLAY") {
         myMusicPlayer.playTones();  // Start playing the melody
     } else if (buzzerValue == "STOP") {
         myMusicPlayer.stopTone();  // Stop the melody immediately
+    }
+
+    if (treatValue == "DISPENSE") {
+        Serial.println("DISPENSE command received"); // Debug statement
+        treatServo.rotate();  // Rotate the treat dispenser servo
+        pTreatCharacteristic->setValue(""); // Reset the characteristic value
+        delay(500); // Small delay to ensure motor has time to move
     }
 
     // Restart advertising if needed
@@ -205,4 +232,5 @@ void loop() {
         lastAdvertiseTime = millis();
     }
 }
+
 
