@@ -1,5 +1,5 @@
 # Constellation
 Student developed cat toy
 
-## WebSite
+## Website
 https://constellationcattoy.wordpress.com/ 
